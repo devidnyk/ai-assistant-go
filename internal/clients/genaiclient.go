@@ -3,6 +3,7 @@ package clients
 import (
 	"context"
 	"log"
+	"os"
 
 	"google.golang.org/genai"
 )
@@ -16,7 +17,7 @@ type GenaiClient struct {
 	sysConfig *genai.GenerateContentConfig
 }
 
-func NewGenAiClientWithApiKey(apiKey string) *GenaiClient {
+func NewGenAiClientWithApiKey(apiKey string, sysPromptPath string) *GenaiClient {
 	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
 		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
@@ -25,19 +26,15 @@ func NewGenAiClientWithApiKey(apiKey string) *GenaiClient {
 		panic("Failed to create GenAI client: " + err.Error())
 	}
 
+	promptBytes, err := os.ReadFile(sysPromptPath)
+	if err != nil {
+		panic("Failed to read system prompt file: " + err.Error())
+	}
+
 	temp := float32(0.5)
 	sysCfg := &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(
-			"You are a personal AI assistant representing the user. Your role is to: "+
-				"1. Answer questions about the user based on the provided context "+
-				"2. Provide advice and insights by analyzing the user's background and experience "+
-				"3. Make reasonable inferences from the context to be helpful "+
-				"4. When asked for advice (like 'how did you get into Microsoft'), analyze the user's experience and qualifications to provide relevant tips "+
-				"5. Speak in first person when referring to the user's experiences (e.g., 'I worked at Microsoft...') "+
-				"6. If the context lacks specific information, acknowledge it but still try to be helpful based on what you know "+
-				"7. Be conversational, friendly, and proactive in your responses "+
-				"8. IMPORTANT: Keep responses concise and complete. Summarize key points in 3-5 bullet points when giving advice. Be brief but comprehensive. "+
-				"Remember: You're not just retrieving facts, you're acting as the user's intelligent assistant. Always finish your thoughts completely within the response limit.",
+			string(promptBytes),
 			genai.RoleModel,
 		),
 		MaxOutputTokens: 2048,

@@ -19,7 +19,7 @@ func main() {
 	config := configs.InitConfig()
 
 	log.Println("Initialising clients")
-	genaiClient := clients.NewGenAiClientWithApiKey(config.GeminiApiKey)
+	genaiClient := clients.NewGenAiClientWithApiKey(config.GeminiApiKey, config.SysPromptPath)
 	telebotClient := clients.NewTeleClient(config.BotToken)
 	qdrantClient := clients.NewQdrantClient(config.QdrantApiKey)
 

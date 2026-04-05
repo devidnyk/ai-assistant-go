@@ -8,9 +8,10 @@ import (
 )
 
 type Config struct {
-	BotToken     string
-	GeminiApiKey string
-	QdrantApiKey string
+	BotToken      string
+	GeminiApiKey  string
+	QdrantApiKey  string
+	SysPromptPath string
 }
 
 func InitConfig() *Config {
@@ -40,6 +41,13 @@ func InitConfig() *Config {
 	}
 
 	config.QdrantApiKey = qdrantApiKey
+
+	sysPromptPath := os.Getenv("SYS_PROMPT_PATH")
+	if sysPromptPath == "" {
+		log.Panic("SYS_PROMPT_PATH is not set in the environment")
+	}
+
+	config.SysPromptPath = sysPromptPath
 
 	return &config
 }

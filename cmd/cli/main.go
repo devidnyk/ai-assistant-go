@@ -17,6 +17,9 @@ const sourceDataFolder string = "./myinfo/"
 func main() {
 	fmt.Println("Starting the application...")
 	config := configs.InitConfig()
+	if err := config.ValidateForAssistant(); err != nil {
+		log.Fatalf("Invalid configuration: %v", err)
+	}
 
 	log.Println("Initialising clients")
 	genaiClient := clients.NewGenAiClientWithApiKey(config.GeminiApiKey, config.SysPromptPath)

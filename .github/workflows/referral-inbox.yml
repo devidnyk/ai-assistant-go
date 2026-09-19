@@ -1,0 +1,42 @@
+name: Referral inbox
+
+on:
+  schedule:
+    # Every 6 hours. Scheduled runs are often delayed under load, so treat this as
+    # "roughly every 6 hours" rather than a guarantee.
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+# Two runs at once would race on the Telegram offset stored in the sheet and could
+# double-process a batch, so overlapping runs are queued rather than cancelled.
+concurrency:
+  group: referral-inbox
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Process referral inbox
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          GOOGLE_SA_JSON_B64: ${{ secrets.GOOGLE_SA_JSON_B64 }}
+          # Not secret, so kept inline where it is reviewable in diffs.
+          REFERRAL_RATE_LIMIT: "2"
+          REFERRAL_RATE_LIMIT_WINDOW_DAYS: "30"
+        run: go run ./cmd/inbox

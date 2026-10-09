@@ -36,6 +36,7 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
           GOOGLE_SA_JSON_B64: ${{ secrets.GOOGLE_SA_JSON_B64 }}
+          OWNER_CHAT_ID: ${{ secrets.OWNER_CHAT_ID }}
           # Not secret, so kept inline where it is reviewable in diffs.
           REFERRAL_RATE_LIMIT: "2"
           REFERRAL_RATE_LIMIT_WINDOW_DAYS: "30"

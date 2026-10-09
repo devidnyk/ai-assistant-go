@@ -1,5 +1,10 @@
 *.env
 
+# Google service account keys. Never commit these.
+*.json
+!.vscode/*.json
+service-account*.json
+
 /myinfo/*
 
 .vscode*

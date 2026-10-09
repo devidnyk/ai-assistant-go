@@ -71,6 +71,9 @@ type ReferralOperation struct {
 	RateLimitWindowDays int
 	PollLimit           int
 
+	// Summary accumulates what the run did. It is read after both passes complete.
+	Summary RunSummary
+
 	// Now is injectable so rate limiting and timestamps can be tested deterministically.
 	Now func() time.Time
 }
@@ -208,6 +211,8 @@ func (op *ReferralOperation) ProcessInbox(ctx context.Context) error {
 		return err
 	}
 
+	op.Summary.UpdatesFetched = len(updates)
+
 	if len(updates) == 0 {
 		log.Println("No new Telegram updates")
 		return nil
@@ -262,6 +267,7 @@ func (op *ReferralOperation) ProcessInbox(ctx context.Context) error {
 
 		parsed, parseErr := ParseReferCommand(message.Text)
 		if parseErr != nil {
+			op.Summary.Malformed++
 			replies = append(replies, outgoing{chatID, "Could not read that request: " + parseErr.Error() + "\n\n" + usageMessage})
 			continue
 		}
@@ -271,6 +277,7 @@ func (op *ReferralOperation) ProcessInbox(ctx context.Context) error {
 		// Checked before the rate limit so a duplicate does not consume the sender's quota.
 		dedupKey := DedupKey(chatID, parsed.CandidateName, parsed.JobID)
 		if submitted[dedupKey] {
+			op.Summary.Duplicates++
 			log.Printf("Rejecting duplicate referral from chat %d for job %s", chatID, parsed.JobID)
 			replies = append(replies, outgoing{chatID, fmt.Sprintf(
 				"You have already submitted a referral for %s (job %s). It is still on the list, no need to send it again.",
@@ -279,6 +286,7 @@ func (op *ReferralOperation) ProcessInbox(ctx context.Context) error {
 		}
 
 		if recentPerChat[chatID] >= op.RateLimit {
+			op.Summary.RateLimited++
 			replies = append(replies, outgoing{chatID, fmt.Sprintf(
 				"You have reached the limit of %d referral request(s) every %d day(s). Please try again later.",
 				op.RateLimit, op.RateLimitWindowDays)})
@@ -312,6 +320,9 @@ func (op *ReferralOperation) ProcessInbox(ctx context.Context) error {
 	if err := op.Store.AppendReferrals(ctx, newReferrals); err != nil {
 		return err
 	}
+
+	// Counted only after the write succeeds, so a failed append is not reported as recorded.
+	op.Summary.NewReferrals = len(newReferrals)
 	log.Printf("Recorded %d new referral(s)", len(newReferrals))
 
 	// Replies are best effort: a blocked user must not prevent the offset from advancing,
@@ -342,6 +353,7 @@ func (op *ReferralOperation) NotifyCompleted(ctx context.Context) error {
 	}
 
 	notified := 0
+	permanentFailures := 0
 	transientFailures := 0
 
 	for _, row := range rows {
@@ -372,9 +384,13 @@ func (op *ReferralOperation) NotifyCompleted(ctx context.Context) error {
 			// The chat is gone or the bot is blocked. Stamp it so this row stops retrying.
 			log.Printf("Permanent delivery failure for row %d: %v", row.Index, sendErr)
 			if err := op.Store.MarkNotified(ctx, row.Index, op.now(), apiErr.Error()); err != nil {
+				// Not stamped, so it will be attempted again next run: a retry, not yet a
+				// recorded permanent failure.
 				log.Printf("Failed to record permanent failure on row %d: %v", row.Index, err)
 				transientFailures++
+				continue
 			}
+			permanentFailures++
 
 		default:
 			// Transient: leave notified_at empty so the next run retries.
@@ -382,6 +398,10 @@ func (op *ReferralOperation) NotifyCompleted(ctx context.Context) error {
 			transientFailures++
 		}
 	}
+
+	op.Summary.Notified = notified
+	op.Summary.NotifyPermanentFailures = permanentFailures
+	op.Summary.NotifyRetries = transientFailures
 
 	log.Printf("Sent %d completion notification(s)", notified)
 

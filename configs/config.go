@@ -32,6 +32,11 @@ type Config struct {
 	RateLimitWindowDays int
 	PollLimit           int
 
+	// OwnerChatID is the Telegram chat that receives the end-of-run digest. A bot cannot
+	// message itself, so this is the owner's personal chat with the bot. Zero disables the digest.
+	OwnerChatID    int64
+	ownerChatIDErr error
+
 	// Optional AI/RAG configuration. Only required by the CLI assistant, not the referral inbox.
 	GeminiApiKey  string
 	QdrantApiKey  string
@@ -47,8 +52,13 @@ func InitConfig() *Config {
 		log.Println("No .env file loaded, falling back to process environment:", err)
 	}
 
+	ownerChatID, ownerChatIDErr := parseOwnerChatID(os.Getenv("OWNER_CHAT_ID"))
+
 	return &Config{
 		BotToken: os.Getenv("BOT_TOKEN"),
+
+		OwnerChatID:    ownerChatID,
+		ownerChatIDErr: ownerChatIDErr,
 
 		SpreadsheetID:      normalizeSpreadsheetID(os.Getenv("SPREADSHEET_ID")),
 		GoogleSAJSONBase64: os.Getenv("GOOGLE_SA_JSON_B64"),
@@ -91,6 +101,12 @@ func (c *Config) ValidateForInbox() error {
 		return fmt.Errorf("TELEGRAM_POLL_LIMIT must be between 1 and 100, got %d", c.PollLimit)
 	}
 
+	// A malformed value is rejected rather than ignored: silently dropping it would disable
+	// the digest with nothing to indicate why.
+	if c.ownerChatIDErr != nil {
+		return c.ownerChatIDErr
+	}
+
 	return nil
 }
 
@@ -113,6 +129,22 @@ func (c *Config) ValidateForAssistant() error {
 	}
 
 	return nil
+}
+
+// parseOwnerChatID reads the optional digest recipient. Empty means "not configured".
+// Group chats have negative ids, so any non-zero integer is accepted.
+func parseOwnerChatID(raw string) (int64, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, nil
+	}
+
+	id, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || id == 0 {
+		return 0, fmt.Errorf("OWNER_CHAT_ID must be a non-zero numeric Telegram chat id, got %q", trimmed)
+	}
+
+	return id, nil
 }
 
 // normalizeSpreadsheetID accepts either a bare spreadsheet ID or a full Google Sheets URL.

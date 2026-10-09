@@ -13,7 +13,8 @@ the way.
 2. Every ~6 hours a GitHub Actions job runs `cmd/inbox`, which:
    - pulls new Telegram messages, validates them, and appends a row with `status = Pending`;
    - replies to the sender confirming what was recorded;
-   - re-reads the sheet and messages anyone whose row you have flipped to `Done`.
+   - re-reads the sheet and messages anyone whose row you have flipped to `Done`;
+   - prints a run summary, and messages **you** a digest of how many referrals are pending.
 3. You triage in the spreadsheet. Changing `status` to `Done` is the only manual step.
 
 Because cron is stateless, both directions are made idempotent:
@@ -104,7 +105,25 @@ and can be triggered manually via **Run workflow** for testing.
 | `REFERRAL_RATE_LIMIT` | no | `1` | Max submissions per chat per window |
 | `REFERRAL_RATE_LIMIT_WINDOW_DAYS` | no | `7` | Length of the rolling window, in days |
 | `TELEGRAM_POLL_LIMIT` | no | `100` | Updates fetched per run (1–100) |
+| `OWNER_CHAT_ID` | no | — | Your Telegram chat id; enables the pending-count digest |
 | `GEMINI_API_KEY`, `QDRANT_API_KEY`, `SYS_PROMPT_PATH` | no | — | Only for `cmd/cli` |
+
+### Run summary and digest
+
+Every run ends with a one-line summary in the workflow log, a table on the run's Summary page,
+and (if `OWNER_CHAT_ID` is set) a Telegram message to you:
+
+```
+Run summary: fetched=3 recorded=1 duplicates=0 rate_limited=1 malformed=0 notified_done=2 notify_failed_permanent=0 notify_will_retry=0 | sheet: pending=4 done=9 awaiting_notification=0
+```
+
+The job never changes a row's status itself (you flip `Pending` to `Done` by hand), so
+`notified_done` is the number of rows it **newly notified as Done** this run. `pending` and
+`done` are totals read from the sheet after both passes.
+
+The digest is skipped when nothing is pending and nothing happened, to avoid a "0 pending" ping
+every six hours. It is best effort: if it cannot be delivered, the run is not marked failed.
+To find your chat id, message the bot and read `chat.id` from its `getUpdates` response.
 
 ### Operational notes
 
